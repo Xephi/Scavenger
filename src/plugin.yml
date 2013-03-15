@@ -1,10 +1,25 @@
 name: Scavenger
 main: me.cnaude.plugin.Scavenger.Scavenger
-version: 1.16c
-author: cnaude, modwizcode, SirHedgehog
+version: 1.18
+author: cnaude, modwizcode, SirHedgehog, Xephi
 description: Item recovery on death. Based on SirHedgehog's code.
 website: http://dev.bukkit.org/server-mods/scavenger/
-softdepend: [Vault]
+loadbefore:
+  - ProtocolLib
+softdepend:
+  - Vault
+  - BattleArena
+  - EpicBoss
+  - MobArena
+  - MultiInv
+  - Multiverse-Core
+  - Multiverse-Inventories
+  - WorldEdit
+  - Factions
+  - UltimateArena
+  - Authenticator
+  - DungeonMaze
+  - Residence
 commands:
   scavengerreload:
     description: Reload config

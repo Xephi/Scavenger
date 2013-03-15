@@ -1,15 +1,17 @@
 package me.cnaude.plugin.Scavenger;
 
+import fr.areku.Authenticator.Authenticator;
+import fr.areku.Authenticator.events.PlayerOfflineModeLogin;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 
-public class ScavengerEventListener_Online implements Listener {
+public class ScavengerEventListenerOffline implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerDeathEvent(PlayerDeathEvent event) {
@@ -26,12 +28,11 @@ public class ScavengerEventListener_Online implements Listener {
             if (isScavengeAllowed(event.getPlayer())) {
                 RestorationManager.enable(event.getPlayer());
             }
-
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onPlayerJoinEvent(PlayerJoinEvent event) {
+    public void onPlayerOfflineModeLogin(PlayerOfflineModeLogin event) {
         if ((event.getPlayer() instanceof Player)) {
             if (isScavengeAllowed(event.getPlayer())) {
                 RestorationManager.enable(event.getPlayer());
@@ -41,14 +42,19 @@ public class ScavengerEventListener_Online implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerMove(PlayerMoveEvent event) {
-        if ((event.getPlayer() instanceof Player)) {
-            if (isScavengeAllowed(event.getPlayer())) {
-                RestorationManager.restore(event.getPlayer());
-            }
+        if (isScavengeAllowed(event.getPlayer())) {
+            RestorationManager.restore(event.getPlayer());
         }
+
     }
 
     private boolean isScavengeAllowed(Player player) {
+        EntityDamageEvent.DamageCause dc = player.getLastDamageCause().getCause();        
+        Scavenger.get().logDebug("Player: " + player + "World: " 
+                + player.getWorld().getName().toLowerCase() + " DamageCause: " + dc.toString());
+        if (!Authenticator.isPlayerLoggedIn(player)) {
+            return false;
+        }
         if (Scavenger.getSConfig().blacklistedWorlds().contains(player.getWorld().getName().toLowerCase())) {
             return false;
         }
@@ -59,6 +65,9 @@ public class ScavengerEventListener_Online implements Listener {
             return true;
         }
         if (player.hasPermission("scavenger.scavenge")) {
+            return true;
+        }
+        if (player.hasPermission("scavenger.scavenge." + dc.toString())) {
             return true;
         }
         if (player.hasPermission("scavenger.inv")) {
