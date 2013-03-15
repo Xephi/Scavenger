@@ -15,7 +15,6 @@ import java.util.logging.Logger;
 import net.milkbowl.vault.Vault;
 import net.milkbowl.vault.economy.Economy;
 import net.slipcor.pvparena.PVPArena;
-import net.slipcor.pvparena.api.PVPArenaAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -36,7 +35,7 @@ public class Scavenger extends JavaPlugin {
     private static Scavenger instance = null;
     private static Economy economy = null;
     public static MobArenaHandler maHandler;
-    public static PVPArenaAPI pvpHandler;
+    public static PVPArena pvpHandler;
     public static MultiverseInventories multiverseHandler;
     public static MultiInv multiinvHandler;
     public static DungeonMazeAPI dmHandler;
@@ -46,8 +45,8 @@ public class Scavenger extends JavaPlugin {
     public boolean configLoaded = false;
     static final Logger log = Logger.getLogger("Minecraft");
     private static ScavengerConfig config;
-    private final ScavengerEventListener eventListener = new ScavengerEventListener();
-    private final ScavengerEventListener_Online eventListenerOnline = new ScavengerEventListener_Online();
+    private final ScavengerEventListenerOffline eventListener = new ScavengerEventListenerOffline();
+    private final ScavengerEventListenerOnline eventListenerOnline = new ScavengerEventListenerOnline();
 
     public static Scavenger get() {
         return instance;
@@ -55,40 +54,51 @@ public class Scavenger extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        loadConfig();
+        if (!checkForProtocolLib()) {
+            logError("This plugin requires ProtocolLib. Please download the latest: http://dev.bukkit.org/server-mods/protocollib/");
+            Bukkit.getServer().getPluginManager().disablePlugin(this);
+        } else {
 
-        setupMobArenaHandler();
-        setupPVPArenaHandler();
-        checkForUltimateArena();
-        checkForBattleArena();
-        checkForWorldGuard();
-        checkForFactions();
-        checkForDungeonMaze();
-        setupResidence();
+            loadConfig();
+            
+            for (String s : getSConfig().blacklistedWorlds()) {
+                Scavenger.get().logDebug("BlackListedWorld: " + s);
+            }
 
-        rm = new RestorationManager();
-        rm.load();
-        ignoreList = new ScavengerIgnoreList();
-        ignoreList.load();
-        if (getSConfig().offlineMode()) {
-            Plugin p = Bukkit.getServer().getPluginManager().getPlugin("Authenticator");
-            {
-                if (p != null) { //if Authenticator is present..
-                    if (fr.areku.Authenticator.Authenticator.isUsingOfflineModePlugin()) { // .. and has detected a auth plugin ..
-                        getServer().getPluginManager().registerEvents(eventListener, this); // ..register the listener
-                        logInfo("Hook to Authenticator's API and your auth plugin.");
+            setupMobArenaHandler();
+            setupPVPArenaHandler();
+            checkForUltimateArena();
+            checkForBattleArena();
+            checkForWorldGuard();
+            checkForFactions();
+            checkForDungeonMaze();
+            setupResidence();
+
+            rm = new RestorationManager();
+            rm.load(); // load old format and then delete
+            rm.load1(); // load new format
+            ignoreList = new ScavengerIgnoreList();
+            ignoreList.load();
+            if (getSConfig().offlineMode()) {
+                Plugin p = Bukkit.getServer().getPluginManager().getPlugin("Authenticator");
+                {
+                    if (p != null) { //if Authenticator is present..
+                        if (fr.areku.Authenticator.Authenticator.isUsingOfflineModePlugin()) { // .. and has detected a auth plugin ..
+                            getServer().getPluginManager().registerEvents(eventListener, this); // ..register the listener
+                            logInfo("Hook to Authenticator's API and your auth plugin.");
+                        } else {
+                            logInfo("No Auth plugin detected. Set offline-mode to false or add an auth plugin.");
+                            getServer().getPluginManager().registerEvents(eventListenerOnline, this);
+                        }
                     } else {
-                        logInfo("No Auth plugin detected. Set offline-mode to false or add an auth plugin.");
+                        logInfo("Authenticator not detected. Set offline-mode to false or add Authenticator.");
                         getServer().getPluginManager().registerEvents(eventListenerOnline, this);
                     }
-                } else {
-                    logInfo("Authenticator not detected. Set offline-mode to false or add Authenticator.");
-                    getServer().getPluginManager().registerEvents(eventListenerOnline, this);
                 }
+            } else {
+                getServer().getPluginManager().registerEvents(eventListenerOnline, this);
+                logInfo("Offline-mode is set to false, no Authenticator Hook");
             }
-        } else {
-            getServer().getPluginManager().registerEvents(eventListenerOnline, this);
-            logInfo("Offline-mode is set to false, no Authenticator Hook");
         }
     }
 
@@ -103,7 +113,7 @@ public class Scavenger extends JavaPlugin {
             logInfo("UltimateArena detected. Scavenger will not recover items in an arena.");
         }
     }
-    
+
     private void checkForBattleArena() {
         Plugin baPlugin = getServer().getPluginManager().getPlugin("BattleArena");
 
@@ -118,18 +128,19 @@ public class Scavenger extends JavaPlugin {
             logInfo("Factions detected. Players will drop items in enemy teritory!");
         }
     }
-    
+
     private void checkForDungeonMaze() {
         if (getDungeonMaze() != null) {
             logInfo("DungeonMaze detected, drop item in the dungeon maze worlds configs.");
-        }	
+        }
     }
 
-
-	@Override
+    @Override
     public void onDisable() {
-        rm.save();
-        ignoreList.save();
+        if (checkForProtocolLib()) {
+            rm.save();
+            ignoreList.save();
+        }
     }
 
     public Economy getEconomy() {
@@ -162,9 +173,7 @@ public class Scavenger extends JavaPlugin {
             if (plugin instanceof MultiInv) {
                 multiInvAPI = ((MultiInv) plugin).getAPI();
             }
-        } 
-        catch (NoClassDefFoundError ex) {
-            
+        } catch (NoClassDefFoundError ex) {
         }
         return multiInvAPI;
     }
@@ -179,11 +188,20 @@ public class Scavenger extends JavaPlugin {
     }
 
     public DungeonMaze getDungeonMaze() {
-    	Plugin plugin = getServer().getPluginManager().getPlugin("DungeonMaze");
+        Plugin plugin = getServer().getPluginManager().getPlugin("DungeonMaze");
         if (plugin == null && !(plugin instanceof DungeonMaze)) {
-        	return null;
-         }
-    	return (DungeonMaze) plugin;
+            return null;
+        }
+        return (DungeonMaze) plugin;
+    }
+
+    public boolean checkForProtocolLib() {
+        Plugin plugin = getServer().getPluginManager().getPlugin("ProtocolLib");
+        if (plugin == null) {
+            return false;
+        } else {
+            return true;
+        }
     }
 
     public void setupResidence() {
@@ -305,9 +323,10 @@ public class Scavenger extends JavaPlugin {
 
         if (pvpPlugin == null) {
             return;
-        }
-
-        pvpHandler = new PVPArenaAPI();
+        }                
+        
+        pvpHandler = net.slipcor.pvparena.PVPArena.instance;
+        
         logInfo("PVPArena detected. Player inventory restores ignored inside arenas.");
     }
 
@@ -409,5 +428,4 @@ public class Scavenger extends JavaPlugin {
             logError(_message);
         }
     }
-  
 }
